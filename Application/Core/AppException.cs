@@ -2,14 +2,15 @@ namespace Application.Core
 {
     public class AppException
     {
-        public string _error { get; set; }
-        public int _statusCode { get; set; }
-        public string _stackTrace { get; set; }
-        public AppException(int StatusCode, string Error, string StackTrace = null)
+        public AppException(string message, int statusCode, string details = null)
         {
-            _error = Error;
-            _statusCode = StatusCode;
-            _stackTrace = StackTrace;
+            Message = message;
+            StatusCode = statusCode;
+            Details = details;
         }
+        public string Message { get; set; }
+        public int StatusCode { get; set; }
+        //stact-trace (only for development)
+        public string Details { get; set; }
     }
 }

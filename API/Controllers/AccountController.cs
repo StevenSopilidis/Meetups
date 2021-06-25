@@ -1,93 +1,110 @@
+using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
-using Application.Dtos;
+using API.DTOs;
+using API.Services;
 using Domain;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Application.Interfaces;
-using Microsoft.AspNetCore.Authorization;
-using System.Security.Claims;
-using AutoMapper;
-using Persistence;
-using AutoMapper.QueryableExtensions;
 
 namespace API.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class AccountsController : ControllerBase
+    public class AccountController : ControllerBase
     {
         private readonly UserManager<AppUser> _userManager;
         private readonly SignInManager<AppUser> _signInManager;
-        private readonly ITokenService _tokenService;
-        private readonly IMapper _mapper;
-        private readonly DataContext _context;
-        public AccountsController(UserManager<AppUser> userManager, SignInManager<AppUser> signInManager,
-        ITokenService tokenService, IMapper mapper, DataContext context)
+        private readonly TokenService _tokenService;
+        public AccountController(UserManager<AppUser> userManager, SignInManager<AppUser> signInManager,
+        TokenService tokenService)
         {
-            _context = context;
             _tokenService = tokenService;
             _signInManager = signInManager;
             _userManager = userManager;
-            _mapper = mapper;
         }
 
     [AllowAnonymous]
     [HttpPost("register")]
-    public async Task<ActionResult<UserDto>> Register(RegisterDto registedDto)
+    public async Task<ActionResult<UserDto>> Register(RegisterDto registerDto)
     {
-        var user = await _userManager.Users.SingleOrDefaultAsync(u => u.UserName == registedDto.Username || u.Email == registedDto.Email);
-        if (user != null) return BadRequest("Username or Email already taken");
-        var newUser = new AppUser
+        //check if email or username is already taken
+        if(await _userManager.Users.AnyAsync(u => u.Email == registerDto.Email))
         {
-            UserName = registedDto.Username,
-            Email = registedDto.Email,
-        };
-        var result = await _userManager.CreateAsync(newUser, registedDto.Password);
-        if (result.Succeeded == false) return BadRequest(result.Errors);
-        return new UserDto
+            ModelState.AddModelError("email", "Email already taken");
+            return ValidationProblem();
+        }
+        if(await _userManager.Users.AnyAsync(u => u.UserName == registerDto.Username))
         {
-            Token = _tokenService.CreateToken(newUser),
-            Username = newUser.UserName,
-            Email = newUser.Email,
-            Bio = newUser.Bio
+            ModelState.AddModelError("username", "Username already taken");
+            return ValidationProblem();
+        }
+        var user = new AppUser
+        {
+            UserName= registerDto.Username,
+            DisplayName= registerDto.DisplayName,
+            Email = registerDto.Email
         };
+
+        var result = await _userManager.CreateAsync(user, registerDto.Password);
+
+        if(result.Succeeded)
+        {
+            return CreateUserObject(user);
+        }
+
+        return BadRequest("Could not register");
     }
-
-
+    
+    
     [AllowAnonymous]
     [HttpPost("login")]
     public async Task<ActionResult<UserDto>> Login(LoginDto loginDto)
     {
-        var user = await _userManager.FindByEmailAsync(loginDto.Email);
-        if (user == null) return BadRequest("Invalid Email Address");
-        var signIn = await _signInManager.CheckPasswordSignInAsync(user, loginDto.Password, false);
-        if (signIn.Succeeded == false) return Unauthorized();
-        return new UserDto
+        if (loginDto.Email == null) return Unauthorized();
+        //get the user
+        var user = await _userManager.Users
+            .Include(u => u.Photos)
+            .FirstOrDefaultAsync(u => u.Email == loginDto.Email);
+        //if wrong email
+        if (user == null)
         {
-            Username = user.UserName,
-            Email = user.Email,
-            Bio = user.Bio,
-            Token = _tokenService.CreateToken(user)
-        };
+            return Unauthorized();
+        }
+
+        var result = await _signInManager.CheckPasswordSignInAsync(user, loginDto.Password, false);
+        //if valid password
+        if (result.Succeeded)
+        {
+            return CreateUserObject(user);
+        }
+
+        //if invalid password
+        return Unauthorized();
     }
 
     [HttpGet]
     public async Task<ActionResult<UserDto>> GetCurrentUser()
     {
-        var user = await _userManager.FindByIdAsync(User.FindFirstValue(ClaimTypes.NameIdentifier));
-        return _mapper.Map(user, new UserDto { Token = _tokenService.CreateToken(user) });
+        var user = await _userManager.Users
+            .Include(u => u.Photos)
+            .FirstOrDefaultAsync(u => u.Email == User.FindFirstValue(ClaimTypes.Email));
+
+        return CreateUserObject(user);
     }
 
 
-    [HttpGet("{userId}")]
-    public async Task<ActionResult<AppUser>> GetCertainUser(string userId)
+    private UserDto CreateUserObject(AppUser user)
     {
-        var user = await _context.Users.ProjectTo<ProfileDto>(_mapper.ConfigurationProvider)
-            .FirstOrDefaultAsync(u => u.Id == userId);
-
-        if (user == null) return NotFound();
-        return Ok(user);
+        return new UserDto
+        {
+            DisplayName = user.DisplayName,
+            Image = user?.Photos?.FirstOrDefault(p => p.IsMain)?.Url,
+            Token= _tokenService.CreateToken(user),
+            Username= user.UserName
+        };
     }
-}
+}   
 }

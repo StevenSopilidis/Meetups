@@ -1,16 +1,15 @@
-using Microsoft.AspNetCore.Identity;
 using System.Collections.Generic;
+using Microsoft.AspNetCore.Identity;
 
 namespace Domain
 {
-    public class AppUser : IdentityUser
+    public class AppUser: IdentityUser
     {
+        public string DisplayName { get; set; }
         public string Bio { get; set; }
-        public ICollection<Post> Posts { get; set; } = new List<Post>();
-        public ICollection<Comment> Comments { get; set; } = new List<Comment>();
-        public ICollection<CommentLike> CommentLikes { get; set; } = new List<CommentLike>();
-        public ICollection<Retweet> Retweets { get; set; } = new List<Retweet>();
-        public ICollection<SavedPost> UserSavedPosts { get; set; } = new List<SavedPost>();
-        public ICollection<PostLike> PostLikes { get; set; } = new List<PostLike>();
+        public ICollection<ActivityAttendee> Activities { get; set; }
+        public ICollection<Photo> Photos { get; set; }
+        public ICollection<UserFollowing> Followings { get; set; }
+        public ICollection<UserFollowing> Followers { get; set; }
     }
 }

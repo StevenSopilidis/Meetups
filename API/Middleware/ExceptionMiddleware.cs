@@ -1,11 +1,11 @@
 using System;
 using System.Net;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Application.Core;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
 
 namespace API.Middleware
 {
@@ -14,12 +14,11 @@ namespace API.Middleware
         private readonly RequestDelegate _next;
         private readonly ILogger<ExceptionMiddleware> _logger;
         private readonly IHostEnvironment _env;
-
         public ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddleware> logger, IHostEnvironment env)
         {
-            _next = next;
-            _logger = logger;
             _env = env;
+            _logger = logger;
+            _next = next;
         }
 
         public async Task InvokeAsync(HttpContext context)
@@ -27,27 +26,23 @@ namespace API.Middleware
             try
             {
                 await _next(context);
-            }   
+            }
             catch (Exception ex)
             {
-                //log the erro
+                //if any exception was thrown from middleware stack
                 _logger.LogError(ex.Message);
-
-                //if and Exceptions was caught in the middleware
-                //send a 500 server error response
-                context.Response.ContentType = "application/json";
                 context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
-                
-                //if env is not development do not provide the stack trace
-                var responseObject = _env.IsDevelopment()? 
-                new AppException(context.Response.StatusCode, ex.Message, ex.StackTrace.ToString()):
-                new AppException(context.Response.StatusCode, ex.Message);
+                context.Response.ContentType = "application/json";
 
-                //set some json naming policys
-                var namingPolicy = new JsonSerializerOptions{PropertyNamingPolicy= JsonNamingPolicy.CamelCase};
-                var responseJsonObject = JsonSerializer.Serialize<AppException>(responseObject,namingPolicy);
+                var response = _env.IsDevelopment()? 
+                    new AppException(ex.Message, context.Response.StatusCode, ex.StackTrace.ToString())
+                    : new AppException(ex.Message, context.Response.StatusCode, ex.StackTrace.ToString());
 
-                await context.Response.WriteAsync(responseJsonObject);
+                //set the json naming policy to camel case 
+                var options = new JsonSerializerOptions{PropertyNamingPolicy= JsonNamingPolicy.CamelCase};
+
+                var jsonResponse = JsonSerializer.Serialize(response, options);
+                await context.Response.WriteAsync(jsonResponse);
             }
         }
     }
